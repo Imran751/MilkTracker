@@ -11,7 +11,7 @@ const Header = ({ userName }) => {
       {/* Left space is now empty */}
 
       {/* Centered Text */}
-      <Text style={styles.greetingText}>Hi, welcome back: {userName}</Text>
+      <Text style={styles.greetingText}>Hi, welcome Back: {userName} Ashraf </Text>
 
       {/* Profile image on the right */}
       <TouchableOpacity style={styles.profileContainer}>

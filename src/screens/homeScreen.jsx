@@ -1,73 +1,91 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TextInput, Button, ScrollView } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  SafeAreaView,
+  TextInput,
+  Button,
+  ScrollView,
+  useWindowDimensions,
+  Platform,
+} from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import Header from '../componets/header';
 import HamburgerIcon from '../componets/hamburgerIcon';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useWindowDimensions } from 'react-native';
 
 const HomeScreen = () => {
   const [selectedDate, setSelectedDate] = useState(null);
   const [milkAmount, setMilkAmount] = useState('');
   const [milkData, setMilkData] = useState({});
   const [costPerDay, setCostPerDay] = useState({});
-  const defaultCost = 140;
+  const [lastEnteredCost, setLastEnteredCost] = useState(140);
+  const [costInput, setCostInput] = useState('');
   const { width, height } = useWindowDimensions();
 
-  // Load saved data from AsyncStorage on component mount
   useEffect(() => {
     const loadData = async () => {
-      const savedMilkData = await AsyncStorage.getItem('milkData');
-      const savedCostPerDay = await AsyncStorage.getItem('costPerDay');
+      try {
+        const savedMilkData = await AsyncStorage.getItem('milkData');
+        const savedCostPerDay = await AsyncStorage.getItem('costPerDay');
+        const savedLastCost = await AsyncStorage.getItem('lastEnteredCostMilk');
 
-      if (savedMilkData) setMilkData(JSON.parse(savedMilkData));
-      if (savedCostPerDay) setCostPerDay(JSON.parse(savedCostPerDay));
+        if (savedMilkData) setMilkData(JSON.parse(savedMilkData));
+        if (savedCostPerDay) setCostPerDay(JSON.parse(savedCostPerDay));
+        if (savedLastCost) setLastEnteredCost(parseFloat(savedLastCost));
+      } catch (error) {
+        console.error('Error loading data', error);
+      }
     };
     loadData();
   }, []);
 
-  // Save data to AsyncStorage
-const saveDataToStorage = async () => {
-  try {
-    await AsyncStorage.setItem('milkData', JSON.stringify(milkData));
-    await AsyncStorage.setItem('costPerDay', JSON.stringify(costPerDay));
-  } catch (error) {
-    console.error('Failed to save data to storage', error);
-  }
-};
+  useEffect(() => {
+    if (selectedDate) {
+      const existingCost = costPerDay[selectedDate];
+      setCostInput(existingCost !== undefined ? existingCost.toString() : lastEnteredCost.toString());
+    }
+  }, [selectedDate, costPerDay, lastEnteredCost]);
 
-  // Save milk amount
-  const saveMilkAmount = () => {
+  const saveDataToStorage = useCallback(async () => {
+    try {
+      await AsyncStorage.setItem('milkData', JSON.stringify(milkData));
+      await AsyncStorage.setItem('costPerDay', JSON.stringify(costPerDay));
+      await AsyncStorage.setItem('lastEnteredCostMilk', lastEnteredCost.toString());
+    } catch (error) {
+      console.error('Failed to save data', error);
+    }
+  }, [milkData, costPerDay, lastEnteredCost]);
+
+  const saveMilkAmount = useCallback(() => {
     if (selectedDate && milkAmount) {
-      const updatedMilkData = {
-        ...milkData,
-        [selectedDate]: parseFloat(milkAmount),
-      };
-      setMilkData(updatedMilkData);
-      setMilkAmount('');
-      saveDataToStorage(); // Save data after update
+      const updated = { ...milkData, [selectedDate]: parseFloat(milkAmount) };
+      if (JSON.stringify(updated) !== JSON.stringify(milkData)) {
+        setMilkData(updated);
+        setMilkAmount('');
+        saveDataToStorage();
+      }
     } else {
       alert('Please select a date and enter the milk amount');
     }
-  };
+  }, [selectedDate, milkAmount, milkData, saveDataToStorage]);
 
-  // Save cost for the selected date
-  const saveCost = (cost) => {
-    if (selectedDate) {
-      const updatedCostPerDay = {
-        ...costPerDay,
-        [selectedDate]: parseFloat(cost),
-      };
-      setCostPerDay(updatedCostPerDay);
-      saveDataToStorage(); // Save data after update
+  const handleCostChange = (text) => {
+    setCostInput(text);
+    const parsed = parseFloat(text);
+    if (!isNaN(parsed)) {
+      const updated = { ...costPerDay, [selectedDate]: parsed };
+      setCostPerDay(updated);
+      setLastEnteredCost(parsed);
+      saveDataToStorage();
     }
   };
 
-  // Calculate summary
   const calculateSummary = () => {
     const totalMilk = Object.values(milkData).reduce((acc, amount) => acc + amount, 0);
     const totalCost = Object.keys(milkData).reduce((acc, date) => {
-      const cost = costPerDay[date] || defaultCost;
+      const cost = costPerDay.hasOwnProperty(date) ? costPerDay[date] : lastEnteredCost;
       return acc + milkData[date] * cost;
     }, 0);
     return { totalMilk, totalCost };
@@ -110,7 +128,7 @@ const saveDataToStorage = async () => {
         <View style={styles.milkDataContainer}>
           <Text style={styles.dataTitle}>Milk Record for the Month:</Text>
           {Object.entries(milkData).map(([date, amount], index) => {
-            const dailyCost = (costPerDay[date] || defaultCost) * amount;
+            const dailyCost = (costPerDay.hasOwnProperty(date) ? costPerDay[date] : lastEnteredCost) * amount;
             return (
               <Text key={date} style={styles.milkData}>
                 {index + 1}. {date}: {amount} Liters - Rs. {dailyCost.toFixed(0)}
@@ -120,30 +138,17 @@ const saveDataToStorage = async () => {
         </View>
 
         {selectedDate && (
-  <View style={styles.costContainer}>
-    <Text style={styles.costTitle}>Set Milk Cost for {selectedDate}:</Text>
-    <TextInput
-      style={styles.input}
-      placeholder={`Enter cost per liter (default: ${defaultCost})`}
-      keyboardType="numeric"
-      // Show the entered cost if it exists, otherwise show default cost
-      value={
-        costPerDay[selectedDate] !== undefined
-          ? costPerDay[selectedDate].toString()
-          : ''
-      }
-      onChangeText={(cost) => {
-        const updatedCostPerDay = {
-          ...costPerDay,
-          [selectedDate]: parseFloat(cost) || defaultCost,
-        };
-        setCostPerDay(updatedCostPerDay);
-        saveDataToStorage(); // Save immediately after change
-      }}
-    />
-  </View>
-)}
-
+          <View style={styles.costContainer}>
+            <Text style={styles.costTitle}>Set Milk Cost for {selectedDate}:</Text>
+            <TextInput
+              style={styles.input}
+              placeholder={`Default: Rs. ${lastEnteredCost}/liter`}
+              keyboardType="numeric"
+              value={costInput}
+              onChangeText={handleCostChange}
+            />
+          </View>
+        )}
 
         <View style={styles.summaryContainer}>
           <Text style={styles.summaryTitle}>Summary for the Month:</Text>
@@ -158,11 +163,8 @@ const saveDataToStorage = async () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
     backgroundColor: '#ffffff',
     paddingTop: 20,
-    width: '100%',
   },
   scrollViewContent: {
     paddingBottom: 20,

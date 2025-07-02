@@ -6,18 +6,19 @@ import { createDrawerNavigator } from '@react-navigation/drawer';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
-// Import your separate screens
+// Screens
 import HomeScreen from '../screens/homeScreen';
 import ProfileScreen from '../screens/profileScreen';
 import SummaryScreen from '../screens/summaryScreen';
-import NotificationsScreen from '../screens/notificationsScreen';  // Assuming NotificationsScreen.jsx exists
-import SettingsScreen from '../screens/settingsScreen';  // Assuming SettingsScreen.jsx exists
+import NotificationsScreen from '../screens/notificationsScreen';
+import SettingsScreen from '../screens/settingsScreen';
 
+// Navigators
 const Tab = createBottomTabNavigator();
 const Drawer = createDrawerNavigator();
 
-// Drawer Navigator for Home Screen
-const HomeScreenDrawer = () => (
+// --- Drawer for Milk Tab ---
+const MilkDrawer = () => (
   <Drawer.Navigator screenOptions={{ drawerType: 'slide', headerShown: false }}>
     <Drawer.Screen name="Home" component={HomeScreen} />
     <Drawer.Screen name="Profile" component={ProfileScreen} />
@@ -26,7 +27,17 @@ const HomeScreenDrawer = () => (
   </Drawer.Navigator>
 );
 
-// Main Tab Navigator
+// --- Drawer for Water Tab ---
+const WaterDrawer = () => (
+  <Drawer.Navigator screenOptions={{ drawerType: 'slide', headerShown: false }}>
+    <Drawer.Screen name="WaterSummary" component={SummaryScreen} />
+    <Drawer.Screen name="Profile" component={ProfileScreen} />
+    <Drawer.Screen name="Notifications" component={NotificationsScreen} />
+    <Drawer.Screen name="Settings" component={SettingsScreen} />
+  </Drawer.Navigator>
+);
+
+// --- Main Bottom Tab Navigator ---
 const MainTabNavigator = () => (
   <Tab.Navigator
     screenOptions={({ route }) => ({
@@ -44,12 +55,12 @@ const MainTabNavigator = () => (
       tabBarInactiveTintColor: 'gray',
     })}
   >
-    <Tab.Screen name="Milk" component={HomeScreenDrawer} options={{ headerShown: false }} />
-    <Tab.Screen name="Water" component={SummaryScreen} />
+    <Tab.Screen name="Milk" component={MilkDrawer} />
+    <Tab.Screen name="Water" component={WaterDrawer} />
   </Tab.Navigator>
 );
 
-// Main Navigation Component
+// --- Main App Navigation ---
 export default function MainNavigation() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

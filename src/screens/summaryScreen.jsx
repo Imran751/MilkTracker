@@ -1,94 +1,98 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TextInput, Button, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  SafeAreaView,
+  TextInput,
+  Button,
+  ScrollView,
+  useWindowDimensions,
+  Platform,
+} from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import Header from '../componets/header';
 import HamburgerIcon from '../componets/hamburgerIcon';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useWindowDimensions } from 'react-native';
 
 const SummaryScreen = () => {
   const [selectedDate, setSelectedDate] = useState(null);
   const [waterAmount, setWaterAmount] = useState('');
   const [waterData, setWaterData] = useState({});
   const [costPerDay, setCostPerDay] = useState({});
-  const defaultCost = 5; // Default cost for water, can be adjusted
+  const [lastEnteredCost, setLastEnteredCost] = useState(40);
+  const [costInput, setCostInput] = useState('');
+  const defaultCost = 40;
   const { width, height } = useWindowDimensions();
 
-  // Load saved data from AsyncStorage on component mount
   useEffect(() => {
     const loadData = async () => {
       try {
         const savedWaterData = await AsyncStorage.getItem('waterData');
         const savedCostPerDay = await AsyncStorage.getItem('waterCostPerDay');
+        const savedLastCost = await AsyncStorage.getItem('lastEnteredCost');
 
-        if (savedWaterData) {
-          console.log('Loaded water data:', savedWaterData);
-          setWaterData(JSON.parse(savedWaterData));
-        }
-        if (savedCostPerDay) {
-          console.log('Loaded cost data:', savedCostPerDay);
-          setCostPerDay(JSON.parse(savedCostPerDay));
-        }
+        if (savedWaterData) setWaterData(JSON.parse(savedWaterData));
+        if (savedCostPerDay) setCostPerDay(JSON.parse(savedCostPerDay));
+        if (savedLastCost) setLastEnteredCost(parseFloat(savedLastCost));
       } catch (error) {
-        console.error('Error loading data from AsyncStorage', error);
+        console.error('Error loading data', error);
       }
     };
     loadData();
   }, []);
 
-  // Save data to AsyncStorage
+  useEffect(() => {
+    if (selectedDate) {
+      const existingCost = costPerDay[selectedDate];
+      setCostInput(existingCost !== undefined ? existingCost.toString() : lastEnteredCost.toString());
+    }
+  }, [selectedDate, costPerDay, lastEnteredCost]);
+
   const saveDataToStorage = useCallback(async () => {
     try {
       await AsyncStorage.setItem('waterData', JSON.stringify(waterData));
       await AsyncStorage.setItem('waterCostPerDay', JSON.stringify(costPerDay));
-      console.log('Data saved to AsyncStorage');
+      await AsyncStorage.setItem('lastEnteredCost', lastEnteredCost.toString());
     } catch (error) {
-      console.error('Failed to save data to AsyncStorage', error);
+      console.error('Failed to save data', error);
     }
-  }, [waterData, costPerDay]);
+  }, [waterData, costPerDay, lastEnteredCost]);
 
-  // Save water amount
   const saveWaterAmount = useCallback(() => {
     if (selectedDate && waterAmount) {
-      const updatedWaterData = {
+      const price = costPerDay[selectedDate] ?? lastEnteredCost;
+      const updated = {
         ...waterData,
-        [selectedDate]: parseFloat(waterAmount),
+        [selectedDate]: {
+          amount: parseFloat(waterAmount),
+          price: price,
+        },
       };
-
-      // Check if the data has changed before updating
-      if (JSON.stringify(updatedWaterData) !== JSON.stringify(waterData)) {
-        setWaterData(updatedWaterData);
+      if (JSON.stringify(updated) !== JSON.stringify(waterData)) {
+        setWaterData(updated);
         setWaterAmount('');
         saveDataToStorage();
       }
     } else {
       alert('Please select a date and enter the water amount');
     }
-  }, [selectedDate, waterAmount, waterData, saveDataToStorage]);
+  }, [selectedDate, waterAmount, waterData, costPerDay, lastEnteredCost, saveDataToStorage]);
 
-  // Save cost for the selected date
-  const saveCost = useCallback((cost) => {
-    if (selectedDate) {
-      const updatedCostPerDay = {
-        ...costPerDay,
-        [selectedDate]: parseFloat(cost),
-      };
-
-      // Check if the data has changed before updating
-      if (JSON.stringify(updatedCostPerDay) !== JSON.stringify(costPerDay)) {
-        setCostPerDay(updatedCostPerDay);
-        saveDataToStorage();
-      }
+  const handleCostChange = (text) => {
+    setCostInput(text);
+    const parsed = parseFloat(text);
+    if (!isNaN(parsed)) {
+      const updated = { ...costPerDay, [selectedDate]: parsed };
+      setCostPerDay(updated);
+      setLastEnteredCost(parsed);
+      saveDataToStorage();
     }
-  }, [selectedDate, costPerDay, saveDataToStorage]);
+  };
 
-  // Calculate summary (total water and total cost)
   const calculateSummary = () => {
-    const totalWater = Object.values(waterData).reduce((acc, amount) => acc + amount, 0);
-    const totalCost = Object.keys(waterData).reduce((acc, date) => {
-      const cost = costPerDay[date] || defaultCost;
-      return acc + waterData[date] * cost;
-    }, 0);
+    const totalWater = Object.values(waterData).reduce((acc, data) => acc + data.amount, 0);
+    const totalCost = Object.values(waterData).reduce((acc, data) => acc + data.amount * data.price, 0);
     return { totalWater, totalCost };
   };
 
@@ -99,7 +103,6 @@ const SummaryScreen = () => {
       <Header />
       <HamburgerIcon />
       <Text style={styles.title}>Water Record</Text>
-
       <ScrollView contentContainerStyle={styles.scrollViewContent}>
         <View style={[styles.calendarContainer, { width: width > height ? '90%' : '100%' }]}>
           <Calendar
@@ -117,7 +120,7 @@ const SummaryScreen = () => {
             <Text style={styles.dateText}>Selected Date: {selectedDate}</Text>
             <TextInput
               style={styles.input}
-              placeholder="Enter water amount (liters)"
+              placeholder="Enter water # of Cans"
               keyboardType="numeric"
               value={waterAmount}
               onChangeText={setWaterAmount}
@@ -128,11 +131,12 @@ const SummaryScreen = () => {
 
         <View style={styles.waterDataContainer}>
           <Text style={styles.dataTitle}>Water Record for the Month:</Text>
-          {Object.entries(waterData).map(([date, amount], index) => {
-            const dailyCost = (costPerDay[date] || defaultCost) * amount;
+          {Object.entries(waterData).map(([date, data], index) => {
+            const { amount, price } = data;
+            const dailyCost = amount * price;
             return (
               <Text key={date} style={styles.waterData}>
-                {index + 1}. {date}: {amount} Liters - Rs. {dailyCost.toFixed(0)}
+                {index + 1}. {date}: {amount} Cans × Rs. {price} = Rs. {dailyCost.toFixed(0)}
               </Text>
             );
           })}
@@ -143,17 +147,17 @@ const SummaryScreen = () => {
             <Text style={styles.costTitle}>Set Water Cost for {selectedDate}:</Text>
             <TextInput
               style={styles.input}
-              placeholder="Enter cost per liter (e.g. 50)"
+              placeholder={`Default is Rs. ${lastEnteredCost}/can`}
               keyboardType="numeric"
-              value={(costPerDay[selectedDate] || '').toString()}
-              onChangeText={saveCost}
+              value={costInput}
+              onChangeText={handleCostChange}
             />
           </View>
         )}
 
         <View style={styles.summaryContainer}>
           <Text style={styles.summaryTitle}>Summary for the Month:</Text>
-          <Text style={styles.summaryText}>Total Water Consumed: {totalWater} Liters</Text>
+          <Text style={styles.summaryText}>Total Water Consumed: {totalWater} Cans</Text>
           <Text style={styles.summaryText}>Total Cost to Pay: Rs. {totalCost.toFixed(0)}</Text>
         </View>
       </ScrollView>
@@ -164,11 +168,14 @@ const SummaryScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
     backgroundColor: '#ffffff',
     paddingTop: 20,
-    width: '100%',
+  },
+  hamburgerWrapper: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 20,
+    left: 20,
+    zIndex: 10,
   },
   scrollViewContent: {
     paddingBottom: 20,
